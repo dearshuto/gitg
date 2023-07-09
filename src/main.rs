@@ -1,7 +1,5 @@
 use std::{path::Path, sync::Arc, sync::Mutex};
 
-use asyncgit::sync::RepoPath;
-
 use eframe::{egui, epaint::Color32};
 use gitg::{GitStructureService, WatchTask};
 
@@ -35,12 +33,6 @@ impl GitViewer {
         let path = Path::new("/Users/shuto/develop/github/sj/gitg/src").to_path_buf();
         let task = service.lock().unwrap().watch(path);
 
-        let repo_path = RepoPath::Path(Path::new("").to_path_buf());
-        // let branch_name = asyncgit::cached::BranchName::new(RefCell::new(repo_path.clone()));
-        let _branch_infos: Vec<String> = match asyncgit::sync::get_branches_info(&repo_path, true) {
-            Ok(_) => Vec::new(),
-            Err(_) => Vec::new(),
-        };
         Self {
             system: service,
             task_list: vec![task],
@@ -50,23 +42,33 @@ impl GitViewer {
 
 impl eframe::App for GitViewer {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let system = self.system.lock().unwrap();
         let frame = egui::containers::Frame {
             fill: Color32::from_rgba_premultiplied(20, 20, 30, 20),
             ..Default::default()
         };
 
+        // ブランチ名を列挙
         egui::SidePanel::left("Branches")
             .frame(frame.clone())
             .resizable(true)
             .default_width(150.0)
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| ui.heading("Branches"));
-                ui.separator();
-                ui.vertical_centered(|ui| ui.heading("Item"));
+
+                // 列挙するブランチ名はソートした方がいい？
+                for branch_info in system.branch_infos() {
+                    ui.separator();
+                    ui.label(branch_info.name.to_string());
+                }
             });
-        egui::CentralPanel::default()
-            .frame(frame)
-            .show(ctx, |ui| ui.button("My Button"));
+
+        // ここでツリーを表示したい
+        egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+            for commit_info in system.commit_infos() {
+                ui.label(format!("{}: {}", commit_info.author, commit_info.message));
+            }
+        });
     }
 
     fn on_close_event(&mut self) -> bool {

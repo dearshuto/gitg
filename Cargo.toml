@@ -10,3 +10,5 @@ asyncgit = { git = "https://github.com/extrawurst/gitui.git", rev = "4682a1b" }
 egui = "0.21.0"
 eframe = { version = "*", features = ["wgpu"] }
 egui-wgpu = "*"
+notify = { git = "https://github.com/notify-rs/notify.git", rev = "4a3f5a3" }
+tokio = { version = "1.29.1", features = ["full"] }

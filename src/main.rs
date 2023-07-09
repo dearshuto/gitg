@@ -1,34 +1,50 @@
-use std::path::Path;
+use std::{path::Path, sync::Arc, sync::Mutex};
 
 use asyncgit::sync::RepoPath;
 
 use eframe::{egui, epaint::Color32};
-fn main() {
+use gitg::{GitStructureService, WatchTask};
+
+#[tokio::main]
+async fn main() {
+    let service = GitStructureService::default();
+    let service_shared = Arc::new(Mutex::new(service));
+
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(640.0, 480.0)),
         transparent: true,
         ..Default::default()
     };
+
     eframe::run_native(
         "Git",
         options,
-        Box::new(|_cc| Box::<GitViewer>::new(GitViewer::new())),
+        Box::new(|_cc| Box::new(GitViewer::new(service_shared))),
     )
     .unwrap();
 }
 
-struct GitViewer {}
+struct GitViewer {
+    #[allow(dead_code)]
+    system: Arc<Mutex<GitStructureService<()>>>,
+    task_list: Vec<WatchTask>,
+}
 
 impl GitViewer {
-    pub fn new() -> Self {
-        let repo_path =
-            RepoPath::Path(Path::new("/Users/shuto/develop/github/sj/dearx").to_path_buf());
+    pub fn new(service: Arc<Mutex<GitStructureService<()>>>) -> Self {
+        let path = Path::new("/Users/shuto/develop/github/sj/gitg/src").to_path_buf();
+        let task = service.lock().unwrap().watch(path);
+
+        let repo_path = RepoPath::Path(Path::new("").to_path_buf());
         // let branch_name = asyncgit::cached::BranchName::new(RefCell::new(repo_path.clone()));
         let _branch_infos: Vec<String> = match asyncgit::sync::get_branches_info(&repo_path, true) {
             Ok(_) => Vec::new(),
             Err(_) => Vec::new(),
         };
-        Self {}
+        Self {
+            system: service,
+            task_list: vec![task],
+        }
     }
 }
 
@@ -51,5 +67,14 @@ impl eframe::App for GitViewer {
         egui::CentralPanel::default()
             .frame(frame)
             .show(ctx, |ui| ui.button("My Button"));
+    }
+
+    fn on_close_event(&mut self) -> bool {
+        self.system.lock().unwrap().unwatch_all();
+
+        while let Some(task) = self.task_list.pop() {
+            tokio::spawn(async move { task.kill().await });
+        }
+        true
     }
 }

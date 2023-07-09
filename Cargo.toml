@@ -1,0 +1,9 @@
+[package]
+name = "gitg"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+asyncgit = { git = "https://github.com/extrawurst/gitui.git", rev = "4682a1b" }

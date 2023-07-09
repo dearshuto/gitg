@@ -1,9 +1,10 @@
 use std::{
     ops::Deref,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{mpsc::Sender, Arc, Mutex},
 };
 
+use asyncgit::sync::{BranchInfo, CommitInfo, RepoPath};
 use notify::{Event, RecommendedWatcher, Watcher};
 use tokio::task::JoinHandle;
 
@@ -73,6 +74,18 @@ pub trait IGitStructureWatcher {
 pub struct GitStructureService<TWatcher> {
     #[allow(dead_code)]
     watcher: TWatcher,
+    branch_infos: Vec<BranchInfo>,
+    commit_infos: Vec<CommitInfo>,
+}
+
+impl<T> GitStructureService<T> {
+    pub fn branch_infos(&self) -> &[BranchInfo] {
+        &self.branch_infos
+    }
+
+    pub fn commit_infos(&self) -> &[CommitInfo] {
+        &self.commit_infos
+    }
 }
 
 impl GitStructureService<()> {
@@ -85,9 +98,25 @@ impl GitStructureService<()> {
 
 impl Default for GitStructureService<()> {
     fn default() -> Self {
+        let path = Path::new(".").to_path_buf();
+        let repo_path = RepoPath::Path(path.to_path_buf());
+
+        let branch_infos = match asyncgit::sync::get_branches_info(&repo_path, true) {
+            Ok(item) => item,
+            Err(_) => Vec::new(),
+        };
+
+        let mut commit_infos = Vec::new();
+        for branch_info in &branch_infos {
+            let commit_info =
+                asyncgit::sync::get_commit_info(&repo_path, &branch_info.top_commit).unwrap();
+            commit_infos.push(commit_info);
+        }
+
         Self {
             watcher: (),
-            //shared_object: Arc::new(Mutex::new(SharedObject { is_running: true })),
+            branch_infos,
+            commit_infos,
         }
     }
 }
@@ -96,7 +125,8 @@ impl<TWatcher: IGitStructureWatcher> GitStructureService<TWatcher> {
     pub fn new(watcher: TWatcher) -> Self {
         Self {
             watcher,
-            //shared_object: Arc::new(Mutex::new(SharedObject { is_running: true })),
+            branch_infos: Default::default(),
+            commit_infos: Vec::default(),
         }
     }
 }
@@ -105,7 +135,8 @@ impl<TWatcher: IGitStructureWatcher> GitStructureService<Arc<Mutex<TWatcher>>> {
     pub fn new_shared(watcher: Arc<Mutex<TWatcher>>) -> Self {
         Self {
             watcher,
-            //shared_object: Arc::new(Mutex::new(SharedObject { is_running: true })),
+            branch_infos: Default::default(),
+            commit_infos: Vec::default(),
         }
     }
 }

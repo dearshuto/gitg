@@ -30,8 +30,29 @@ struct GitViewer {
 
 impl GitViewer {
     pub fn new(service: Arc<Mutex<GitStructureService<()>>>) -> Self {
-        let path = Path::new("/Users/shuto/develop/github/sj/gitg/src").to_path_buf();
-        let task = service.lock().unwrap().watch(path);
+        let path = Path::new(".");
+        let task = service.lock().unwrap().watch(path.to_path_buf());
+
+        let repo_path = asyncgit::sync::RepoPath::Path(path.to_path_buf());
+        // let branch_name = asyncgit::cached::BranchName::new(RefCell::new(repo_path.clone()));
+        let _branch_infos: Vec<String> = match asyncgit::sync::get_branches_info(&repo_path, true) {
+            Ok(_) => Vec::new(),
+            Err(_) => Vec::new(),
+        };
+
+        let repository = git2::Repository::open(&path).unwrap();
+        let mut commits = Vec::default();
+        let count = asyncgit::sync::LogWalker::new(&repository, 100)
+            .unwrap()
+            .read(&mut commits)
+            .unwrap();
+        let commit_infos = asyncgit::sync::get_commits_info(&repo_path, &commits, count).unwrap();
+        for commit_info in commit_infos {
+            println!(
+                "{}: {} {:?}",
+                commit_info.author, commit_info.time, commit_info.id
+            );
+        }
 
         Self {
             system: service,

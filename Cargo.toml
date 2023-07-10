@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 asyncgit = { git = "https://github.com/extrawurst/gitui.git", rev = "4682a1b" }
+git2 = "*"
 egui = "0.21.0"
 eframe = { version = "*", features = ["wgpu"] }
 egui-wgpu = "*"

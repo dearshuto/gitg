@@ -40,20 +40,6 @@ impl GitViewer {
             Err(_) => Vec::new(),
         };
 
-        let repository = git2::Repository::open(&path).unwrap();
-        let mut commits = Vec::default();
-        let count = asyncgit::sync::LogWalker::new(&repository, 100)
-            .unwrap()
-            .read(&mut commits)
-            .unwrap();
-        let commit_infos = asyncgit::sync::get_commits_info(&repo_path, &commits, count).unwrap();
-        for commit_info in commit_infos {
-            println!(
-                "{}: {} {:?}",
-                commit_info.author, commit_info.time, commit_info.id
-            );
-        }
-
         Self {
             system: service,
             task_list: vec![task],
@@ -87,7 +73,11 @@ impl eframe::App for GitViewer {
         // ここでツリーを表示したい
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
             for commit_info in system.commit_infos() {
-                ui.label(format!("{}: {}", commit_info.author, commit_info.message));
+                ui.label(format!(
+                    "{}: {}",
+                    commit_info.author,
+                    commit_info.id.get_short_string()
+                ));
             }
         });
     }

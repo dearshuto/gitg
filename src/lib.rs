@@ -1,10 +1,13 @@
 use std::{
+    collections::HashSet,
     ops::Deref,
     path::{Path, PathBuf},
     sync::{mpsc::Sender, Arc, Mutex},
 };
 
 use asyncgit::sync::{BranchInfo, CommitInfo, RepoPath};
+use eframe::epaint::ahash::HashMap;
+use git2::Oid;
 use notify::{Event, RecommendedWatcher, Watcher};
 use tokio::task::JoinHandle;
 
@@ -76,6 +79,12 @@ pub struct GitStructureService<TWatcher> {
     watcher: TWatcher,
     branch_infos: Vec<BranchInfo>,
     commit_infos: Vec<CommitInfo>,
+
+    // コミット全て
+    id_table: HashSet<Oid>,
+
+    // id の過去に向かう方向の親子関係
+    hierarchy_table: HashMap<Oid, Vec<Oid>>,
 }
 
 impl<T> GitStructureService<T> {
@@ -86,7 +95,8 @@ impl<T> GitStructureService<T> {
     pub fn commit_infos(&self) -> &[CommitInfo] {
         &self.commit_infos
     }
-}
+
+
 
 impl GitStructureService<()> {
     pub fn watch(&mut self, path: PathBuf) -> WatchTask {
@@ -106,17 +116,45 @@ impl Default for GitStructureService<()> {
             Err(_) => Vec::new(),
         };
 
-        let mut commit_infos = Vec::new();
-        for branch_info in &branch_infos {
-            let commit_info =
-                asyncgit::sync::get_commit_info(&repo_path, &branch_info.top_commit).unwrap();
-            commit_infos.push(commit_info);
+        // コミットを網羅
+        let mut ids = HashSet::default();
+        let mut hierarchy_table = HashMap::default();
+        let repository = git2::Repository::open(&path).unwrap();
+        for branch in repository.branches(None).unwrap() {
+            let (branch, _type) = branch.unwrap();
+            println!("{}", branch.name().unwrap().unwrap());
+
+            let c = branch.get().peel_to_commit().unwrap();
+
+            // すでに走査済みだったらなにもしない
+            if ids.contains(&c.id()) {
+                continue;
+            }
+
+            let mut parent_ids = Vec::new();
+            for parent in c.parents() {
+                parent_ids.push(parent.id());
+                ids.insert(parent.id());
+            }
+
+            // ヒエラルキー情報を追加
+            hierarchy_table.insert(c.id(), parent_ids);
         }
 
+        let mut commit_ids = Vec::default();
+        let count = asyncgit::sync::LogWalker::new(&repository, 100)
+            .unwrap()
+            .read(&mut commit_ids)
+            .unwrap();
+
+        let commit_infos =
+            asyncgit::sync::get_commits_info(&repo_path, &commit_ids, count).unwrap();
         Self {
             watcher: (),
             branch_infos,
             commit_infos,
+            id_table: ids,
+            hierarchy_table,
         }
     }
 }
@@ -127,6 +165,8 @@ impl<TWatcher: IGitStructureWatcher> GitStructureService<TWatcher> {
             watcher,
             branch_infos: Default::default(),
             commit_infos: Vec::default(),
+            id_table: Default::default(),
+            hierarchy_table: Default::default(),
         }
     }
 }
@@ -137,6 +177,8 @@ impl<TWatcher: IGitStructureWatcher> GitStructureService<Arc<Mutex<TWatcher>>> {
             watcher,
             branch_infos: Default::default(),
             commit_infos: Vec::default(),
+            id_table: Default::default(),
+            hierarchy_table: Default::default(),
         }
     }
 }

@@ -1,7 +1,11 @@
 use std::{path::Path, sync::Arc, sync::Mutex};
 
-use eframe::{egui, epaint::Color32};
-use gitg::{GitStructureService, WatchTask};
+use eframe::{
+    egui,
+    egui::{Id, Painter},
+    epaint::{Color32, Pos2, Stroke},
+};
+use gitg::{GitStructureService, ICommandBuffer, Plotter, WatchTask};
 
 #[tokio::main]
 async fn main() {
@@ -72,13 +76,44 @@ impl eframe::App for GitViewer {
 
         // ここでツリーを表示したい
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+            let painter = ctx.layer_painter(egui::LayerId {
+                order: egui::Order::Foreground,
+                id: Id::new("aaa"),
+            });
+
+            let screen_rext = ui.max_rect();
+
+            // コミット
+            let mut index = 0;
             for commit_info in system.commit_infos() {
                 ui.label(format!(
                     "{}: {}",
                     commit_info.author,
                     commit_info.id.get_short_string()
                 ));
+
+                painter.rect_filled(
+                    eframe::epaint::Rect {
+                        min: eframe::epaint::Pos2 {
+                            x: screen_rext.min.x + 10.0,
+                            y: 40.0 * index as f32,
+                        },
+                        max: eframe::epaint::Pos2 {
+                            x: screen_rext.min.x + 15.0,
+                            y: 40.0 * index as f32 + 5.0,
+                        },
+                    },
+                    0.0,
+                    Color32::RED,
+                );
+
+                index += 1;
             }
+
+            // 接続
+            let mut command_buffer = CommandBuffer::new(&painter);
+            let plotter = Plotter::default();
+            plotter.plot(&mut command_buffer);
         });
     }
 
@@ -89,5 +124,44 @@ impl eframe::App for GitViewer {
             tokio::spawn(async move { task.kill().await });
         }
         true
+    }
+}
+
+struct CommandBuffer<'a> {
+    painter: &'a Painter,
+}
+
+impl<'a> CommandBuffer<'a> {
+    pub fn new(painter: &'a Painter) -> Self {
+        Self { painter }
+    }
+}
+
+impl<'a> ICommandBuffer for CommandBuffer<'a> {
+    fn push_point(&mut self, x: f32, y: f32) {
+        self.painter.rect_filled(
+            eframe::epaint::Rect {
+                min: eframe::epaint::Pos2 { x, y },
+                max: eframe::epaint::Pos2 {
+                    x: x + 5.0,
+                    y: y + 5.0,
+                },
+            },
+            0.0,
+            Color32::KHAKI,
+        );
+    }
+
+    fn push_line(&mut self, begin: [f32; 2], end: [f32; 2]) {
+        let begin = Pos2 {
+            x: begin[0],
+            y: begin[1],
+        };
+        let end = Pos2 {
+            x: end[0],
+            y: end[1],
+        };
+        self.painter
+            .line_segment([begin, end], Stroke::new(5.0, Color32::GREEN));
     }
 }
